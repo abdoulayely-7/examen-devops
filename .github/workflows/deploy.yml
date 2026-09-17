@@ -6,8 +6,29 @@ on:
   workflow_dispatch:
 
 jobs:
+  ci-validation:
+    name: Validate CI (Build & Tests)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'maven'
+
+      - name: Ensure Maven Wrapper is Executable
+        run: chmod +x ./mvnw
+
+      - name: Run Build and Tests
+        run: ./mvnw -B clean verify
+
   build-and-deploy:
     name: Build Image & Deploy to Production
+    needs: ci-validation
     runs-on: ubuntu-latest
 
     steps:
