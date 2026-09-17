@@ -1,0 +1,35 @@
+﻿services:
+  application:
+    image: ${DOCKERHUB_USERNAME:-abdoulayely777}/examen-devops-back:${APP_TAG:-latest}
+    container_name: examen-devops-back
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - SPRING_DATASOURCE_URL=${SPRING_DATASOURCE_URL}
+      - SPRING_DATASOURCE_USERNAME=${SPRING_DATASOURCE_USERNAME}
+      - SPRING_DATASOURCE_PASSWORD=${SPRING_DATASOURCE_PASSWORD}
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-prod}
+    networks:
+      - traefik-public
+      - internal
+    labels:
+      - "traefik.enable=true"
+      # Route HTTPS avec certificat Let's Encrypt géré par Traefik
+      - "traefik.http.routers.app.rule=Host(`app-lydevtech.duckdns.org`)"
+      - "traefik.http.routers.app.entrypoints=websecure"
+      - "traefik.http.routers.app.tls=true"
+      - "traefik.http.routers.app.tls.certresolver=letsencrypt"
+      - "traefik.http.services.app.loadbalancer.server.port=8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+networks:
+  traefik-public:
+    external: true
+  internal:
+    external: true

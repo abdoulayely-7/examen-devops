@@ -1,0 +1,32 @@
+# Dossier de build Maven
+target/
+
+# Dossier Git
+.git/
+
+# Fichiers Git
+.gitattributes
+.gitignore
+
+# Fichiers IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+
+# Fichiers système
+.DS_Store
+Thumbs.db
+
+# Wrapper Maven
+.mvn/
+mvnw
+mvnw.cmd
+
+# Rapports de tests
+**/surefire-reports/
+**/test-output/
