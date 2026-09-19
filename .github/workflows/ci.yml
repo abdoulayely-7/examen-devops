@@ -1,46 +1,57 @@
-name: CI Pipeline
+name: Pipeline CI - Tests et Analyse SonarQube
 
+# Déclencheurs du pipeline d'Intégration Continue (CI)
 on:
+  # Se déclenche automatiquement lorsqu'une Pull Request est ouverte ou mise à jour vers 'main'
   pull_request:
     branches: [ main ]
+  # Se déclenche quand la Pull Request est acceptée et fusionnée (merge) dans la branche 'main'
+  push:
+    branches: [ main ]
+  # Permet de lancer ce workflow manuellement depuis l'interface GitHub si besoin
   workflow_dispatch:
 
 jobs:
   build-and-test:
-    name: Build, Test & SonarQube Analysis
+    name: Compilation, Tests Unitaires et SonarQube
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
+      # Étape 1 : Récupération du code source depuis GitHub
+      - name: Récupérer le code source (Checkout)
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Full history needed for SonarQube analysis
+          fetch-depth: 0 # Récupère tout l'historique git (nécessaire pour l'analyse SonarQube)
 
-      - name: Set up JDK 21
+      # Étape 2 : Installation de Java 21 sur le serveur de build GitHub
+      - name: Configurer l'environnement Java JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '21'
-          cache: 'maven'
+          cache: 'maven' # Met en cache les dépendances Maven pour accélérer les futurs builds
 
-      - name: Ensure Maven Wrapper is Executable
+      # Étape 3 : Donner les droits d'exécution au script Maven Wrapper
+      - name: Rendre le script Maven Wrapper exécutable
         run: chmod +x ./mvnw
 
-      - name: Compile and Run Unit Tests
-        run: ./mvnw -B clean verify
-
-      - name: SonarQube Code Analysis
+      # Étape 4 : Compilation, exécution des tests et attente du Quality Gate SonarQube
+      - name: Compiler, Tester et Analyser avec SonarQube
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
           if [ -n "$SONAR_TOKEN" ] && [ -n "$SONAR_HOST_URL" ]; then
-            echo "Starting SonarQube scan..."
-            ./mvnw -B org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
+            echo "Lancement des tests et analyse SonarQube avec attente du Quality Gate..."
+            # L'option -Dsonar.qualitygate.wait=true force Maven à attendre la réponse de SonarQube.
+            # Si le Quality Gate échoue (rouge), la commande échoue et bloque le pipeline !
+            ./mvnw -B clean verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
               -Dsonar.projectKey=examen-devops-back \
               -Dsonar.projectName="Examen DevOps Backend" \
               -Dsonar.host.url="${SONAR_HOST_URL}" \
-              -Dsonar.token="${SONAR_TOKEN}"
+              -Dsonar.token="${SONAR_TOKEN}" \
+              -Dsonar.qualitygate.wait=true
           else
-            echo "::warning ::SONAR_TOKEN or SONAR_HOST_URL secret not set. Skipping SonarQube scan."
+            echo "::warning ::Variables SONAR_TOKEN ou SONAR_HOST_URL non définies. Exécution simple des tests."
+            ./mvnw -B clean verify
           fi

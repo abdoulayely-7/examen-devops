@@ -1,0 +1,91 @@
+name: Pipeline CD - Deploiement sur AWS EC2
+
+# Déclencheurs du pipeline de Déploiement Continu (CD)
+on:
+  # Ce workflow écoute la FIN du workflow CI ("Pipeline CI - Tests et Analyse SonarQube") sur la branche 'main'
+  workflow_run:
+    workflows: ["Pipeline CI - Tests et Analyse SonarQube"]
+    branches: [ main ]
+    types: [ completed ]
+  # Permet également de lancer le déploiement manuellement si nécessaire
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    name: Construction Docker et Deploiement en Production
+    # CONDITION CRUCIALE : Le CD ne démarre QUE si le pipeline CI s'est terminé avec SUCCÈS (Quality Gate validé !)
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      # Étape 1 : Téléchargement du code source correspondant exactement au commit validé par la CI
+      - name: Récupérer le code source validé
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      # Étape 2 : Configuration du moteur de build Docker
+      - name: Initialiser Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Étape 3 : Authentification auprès de ton compte Docker Hub
+      - name: Connexion au compte Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Étape 4 : Génération d'un tag court basé sur le commit Git (ex: sha-a1b2c3d)
+      - name: Calculer le tag unique de version (Short Git SHA)
+        id: vars
+        run: |
+          COMMIT_SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
+          echo "short_sha=$(echo $COMMIT_SHA | cut -c1-7)" >> $GITHUB_OUTPUT
+
+      # Étape 5 : Construction de l'image Docker du backend et publication sur Docker Hub
+      - name: Construire et publier l'image sur Docker Hub
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/examen-devops-back:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/examen-devops-back:sha-${{ steps.vars.outputs.short_sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Étape 6 : Connexion SSH au serveur AWS EC2 et mise à jour du conteneur applicatif
+      - name: Se connecter en SSH et déployer sur EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            echo "Démarrage de la mise à jour sur le serveur EC2..."
+            cd /opt/myapp
+
+            # Mise à jour du tag de l'image dans le fichier .env
+            export APP_TAG="sha-${{ steps.vars.outputs.short_sha }}"
+
+            if grep -q "APP_TAG=" .env 2>/dev/null; then
+              sed -i "s/APP_TAG=.*/APP_TAG=sha-${{ steps.vars.outputs.short_sha }}/" .env
+            else
+              echo "APP_TAG=sha-${{ steps.vars.outputs.short_sha }}" >> .env
+            fi
+
+            echo "Téléchargement de la nouvelle image Docker..."
+            docker compose pull application
+
+            echo "Redémarrage du conteneur backend sans interruption des autres services..."
+            docker compose up -d --no-deps application
+
+      # Étape 7 : Vérification en direct que l'application Spring Boot répond en bonne santé
+      - name: Test de santé de l'application en direct (Health Check)
+        run: |
+          echo "Pause de 20 secondes pour laisser le temps à Spring Boot d'initialiser ses composants..."
+          sleep 20
+          echo "Vérification de l'endpoint https://app-lydevtech.duckdns.org/actuator/health..."
+          curl -f -k --retry 5 --retry-delay 6 https://app-lydevtech.duckdns.org/actuator/health
+          echo "L'application est bien en ligne, saine et opérationnelle sur le serveur !"
