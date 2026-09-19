@@ -1,17 +1,25 @@
-name: CD Pipeline - Deploy to AWS EC2
+name: CI/CD Pipeline - Backend
 
 on:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
-  ci-validation:
-    name: Validate CI (Build & Tests)
+  # ==========================================
+  # JOB 1 : CI (Build, Tests & SonarQube Quality Gate)
+  # ==========================================
+  ci:
+    name: CI - Build, Test & SonarQube
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Nécessaire pour l'analyse approfondie de SonarQube
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -23,12 +31,32 @@ jobs:
       - name: Ensure Maven Wrapper is Executable
         run: chmod +x ./mvnw
 
-      - name: Run Build and Tests
-        run: ./mvnw -B clean verify
+      - name: Build, Test & SonarQube Analysis
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        run: |
+          if [ -n "$SONAR_TOKEN" ] && [ -n "$SONAR_HOST_URL" ]; then
+            echo "Starting Maven clean verify with SonarQube Quality Gate check..."
+            ./mvnw -B clean verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
+              -Dsonar.projectKey=examen-devops-back \
+              -Dsonar.projectName="Examen DevOps Backend" \
+              -Dsonar.host.url="${SONAR_HOST_URL}" \
+              -Dsonar.token="${SONAR_TOKEN}" \
+              -Dsonar.qualitygate.wait=true
+          else
+            echo "::warning ::SONAR_TOKEN ou SONAR_HOST_URL non configuré. Exécution de clean verify standard."
+            ./mvnw -B clean verify
+          fi
 
-  build-and-deploy:
-    name: Build Image & Deploy to Production
-    needs: ci-validation
+  # ==========================================
+  # JOB 2 : CD (Docker Build, Push & Deploy EC2)
+  # Démarre UNIQUEMENT si le job CI (avec SonarQube) a réussi !
+  # ==========================================
+  cd:
+    name: CD - Build Image & Deploy to AWS EC2
+    needs: ci
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
 
     steps:
