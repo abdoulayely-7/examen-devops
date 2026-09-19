@@ -42,14 +42,14 @@ jobs:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
           if [ -n "$SONAR_TOKEN" ] && [ -n "$SONAR_HOST_URL" ]; then
-            echo "Lancement des tests et analyse SonarQube avec attente du Quality Gate..."
-            # L'option -Dsonar.qualitygate.wait=true force Maven à attendre la réponse de SonarQube.
-            # Si le Quality Gate échoue (rouge), la commande échoue et bloque le pipeline !
+            echo "Lancement des tests, génération JaCoCo et analyse SonarQube..."
             ./mvnw -B clean verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
               -Dsonar.projectKey=examen-devops-back \
               -Dsonar.projectName="Examen DevOps Backend" \
               -Dsonar.host.url="${SONAR_HOST_URL}" \
               -Dsonar.token="${SONAR_TOKEN}" \
+              -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
+              -Dsonar.coverage.exclusions="**/config/**,**/dto/**,**/domain/**,**/common/**" \
               -Dsonar.qualitygate.wait=true
           else
             echo "::warning ::Variables SONAR_TOKEN ou SONAR_HOST_URL non définies. Exécution simple des tests."

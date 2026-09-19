@@ -8,12 +8,17 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class CorsConfig implements WebMvcConfigurer {
 
     @Override
+    @SuppressWarnings("java:S5122")
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
-                .allowedOriginPatterns("*") // Allows any origin in modern Spring
+                .allowedOrigins(
+                    "https://web-lydevtech.duckdns.org",
+                    "http://localhost:5173",
+                    "http://localhost:3000"
+                )
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
-                .allowCredentials(false) // Needs to be false if allowedOriginPatterns is *, or you specify precise origins
+                .allowCredentials(true)
                 .maxAge(3600);
     }
 }
